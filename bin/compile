@@ -21,6 +21,7 @@ S3_BUCKET="heroku-buildpack-nodejs"
 # parse and derive params
 BUILD_DIR=$1
 CACHE_DIR=$2
+ENV_DIR=$3
 LP_DIR=`cd $(dirname $0); cd ..; pwd`
 
 function error() {
@@ -41,6 +42,25 @@ function indent() {
     Darwin) sed -l "$c";;
     *)      sed -u "$c";;
   esac
+}
+
+# Heroku exports environment vars as named files in a directory
+# https://devcenter.heroku.com/articles/buildpack-api-staging?preview=1#bin-compile
+function export_env_dir() {
+  env_dir=$1
+  whitelist_regex=${2:-''}
+  blacklist_regex=${3:-'^(PATH|GIT_DIR|CPATH|CPPATH|LD_PRELOAD|LIBRARY_PATH)$'}
+
+  echo "-----> Exporting environment from $env_dir"
+  if [ -d "$env_dir" ]; then
+    echo "       Environment directory $env_dir"
+    for e in $(ls $env_dir); do
+      echo "       Examining $e"
+      echo "$e" | grep -E "$whitelist_regex" | grep -qvE "$blacklist_regex" &&
+      export "$e=$(cat $env_dir/$e)"
+      :
+    done
+  fi
 }
 
 #node setup
@@ -220,6 +240,7 @@ echo "export PATH=\"\$HOME/bin:\$HOME/node_modules/.bin:\$PATH\"" > $BUILD_DIR/.
 
 # build website with lineman
 cd $BUILD_DIR
+export_env_dir $ENV_DIR
 
 # install Bundler and Sass gems unless enableSass is false
 if [ `$BUILD_DIR/node_modules/.bin/lineman config enableSass` != "false" ]
